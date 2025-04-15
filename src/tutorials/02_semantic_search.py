@@ -1,4 +1,5 @@
 from langchain_core.vectorstores import VectorStore
+from langchain_core.embeddings import Embeddings
 
 
 def document_demo():
@@ -18,11 +19,11 @@ def document_demo():
     return documents
 
 
-def document_loader_demmo() -> list:
+def document_loader_demo() -> list:
     from langchain_core.documents import Document
     from langchain_community.document_loaders import PyPDFLoader
 
-    file_path = "./example_data/How.AI.Works.2023.9.pdf"
+    file_path = "./example_data/nke-10k-2023.pdf"
 
     loader = PyPDFLoader(file_path)
 
@@ -44,7 +45,7 @@ def splitter_demo() -> list:
 
     from langchain_core.documents import Document
 
-    docs: list[Document] = document_loader_demmo()
+    docs: list[Document] = document_loader_demo()
 
     all_splits = text_splitter.split_documents(docs)
 
@@ -53,7 +54,7 @@ def splitter_demo() -> list:
     return all_splits
 
 
-def embedding_demo() -> list:
+def embeddings_demo() -> Embeddings:
     from langchain_core.documents import Document
     from langchain_google_vertexai import VertexAIEmbeddings
 
@@ -70,14 +71,16 @@ def embedding_demo() -> list:
 
     print(f"vector_0 preview: {vector_0[:10]}")
 
+    return embeddings
 
-def vector_store_demo() -> object:
+
+def vector_store_demo() -> VectorStore:
     from langchain_google_vertexai import VertexAIEmbeddings
 
-    embeddings = VertexAIEmbeddings(model_name="text-embedding-004")
+    embeddings: VertexAIEmbeddings = embeddings_demo()
 
     ### in-memory vector store ###
-    from langchain_core.vectorstores import InMemoryVectorStore
+    # from langchain_core.vectorstores import InMemoryVectorStore
     # vector_store = InMemoryVectorStore(embedding=embeddings)
 
     ### chroma persistent vector store ###
@@ -85,28 +88,34 @@ def vector_store_demo() -> object:
     from langchain_chroma.vectorstores import Chroma
 
     vector_store: VectorStore = Chroma(
-        collection_name="how_ai_work",
+        collection_name="nike-10k-2034",
         embedding_function=embeddings,
         persist_directory=".local/chromadb",
     )
 
-    if vector_store._collection.count() == 0:
+    docs_in_collection = vector_store._collection.get(
+        where={"source": "./example_data/nke-10k-2023.pdf"}
+    )["documents"]
+
+    if len(docs_in_collection) == 0:
         splits = splitter_demo()
         ids = vector_store.add_documents(documents=splits)
 
-    results = vector_store.similarity_search_with_score("What does AI mean?")
+    print("Query by Text")
+    results = vector_store.similarity_search_with_score(
+        "How many distribution centers does Nike have in the US?"
+    )
     doc, score = results[0]
     print(f"doc: {doc}, socre :{score}")
-
     print("\n--- --- --- --- --- ---\n")
 
-    query_embedding = embeddings.embed_query("What does deep learning mean?")
+    print("Query by Vector")
+    query_embedding = embeddings.embed_query("When was Nike incorporated?")
     results = vector_store.similarity_search_by_vector_with_relevance_scores(
         query_embedding
     )
     doc, score = results[0]
     print(f"doc: {doc}, socre :{score}")
-
     print("\n--- --- --- --- --- ---\n")
 
     return vector_store
@@ -135,21 +144,28 @@ def custom_retriever_demo(vector_store: VectorStore):
 
 def vector_store_retriever_demo(vector_store: VectorStore):
     retriever = vector_store.as_retriever(
-        search_type="similarity", search_kwargs={"k": 1}
+        search_type="similarity",
+        search_kwargs={"k": 1},
     )
     retrieved_docs = retriever.batch(
         [
-            "What is machine learning?",
-            "What is vector?",
+            "How many distribution centers does Nike have in the US?",
+            "When was Nike incorporated?",
         ]
     )
 
     for doc in retrieved_docs:
         print(doc)
 
+    print("\n--- --- --- --- --- ---\n")
+
+    print("retriever.invoke")
+    doc = retriever.invoke("When was Nike incorporated?")
+    print(doc)
+
 
 if __name__ == "__main__":
-    # document_loader_demmo()
+    # document_loader_demo()
 
     # splitter_demo()
 
@@ -158,5 +174,5 @@ if __name__ == "__main__":
     vector_store = vector_store_demo()
 
     # custom_retriever_demo(vector_store)
-    
+
     vector_store_retriever_demo(vector_store)
