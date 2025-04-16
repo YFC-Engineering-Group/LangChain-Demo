@@ -16,4 +16,8 @@
 pip install langchain
 pip install langchain[google-vertexai]
 pip install langchain-community pypdf
+pip install langchain-chroma
+
+pip install langgraph
+pip install beautifulsoup4
 ```

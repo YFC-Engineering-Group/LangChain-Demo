@@ -11,7 +11,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import START, StateGraph
 from typing_extensions import List, TypedDict
-
+from typing import Literal
+from typing_extensions import Annotated
 
 llm = init_chat_model("gemini-2.0-flash-001", model_provider="google_vertexai")
 
@@ -58,20 +59,55 @@ if docs_count == 0:
     )
 
     all_splits = text_splitter.split_documents(docs)
-    _ = vector_store.add_documents(all_splits)
 
+    total_documents = len(all_splits)
+    third = total_documents // 3
+
+    for idx, doc in enumerate(all_splits):
+        if idx < third:
+            doc.metadata["section"] = "beginning"
+        elif idx < 2 * third:
+            doc.metadata["section"] = "middle"
+        else:
+            doc.metadata["section"] = "end"
+
+    print(f"doc's metadata preview: {all_splits[0].metadata}")
+
+    _ = vector_store.add_documents(all_splits)
+else:
+    print("Skip embeddings\n\n")
 
 prompt: PromptTemplate = hub.pull("rlm/rag-prompt")
 
 
+class Search(TypedDict):
+    query: Annotated[str, ..., "Search query to run."]
+    section: Annotated[
+        Literal["begenning", "middle", "end"],
+        ...,
+        "Section to query.",
+    ]
+
+
 class State(TypedDict):
     question: str
+    query: Search
     context: List[Document]
     answer: str
 
 
+def analyze_query(state: State):
+    structured_llm = llm.with_structured_output(Search)
+    query = structured_llm.invoke(state["question"])
+    return {"query": query}
+
+
 def retrieve(state: State):
-    retrieved_docs = vector_store.similarity_search(state["question"])
+    query: Search = state["query"]
+    retrieved_docs = vector_store.similarity_search(
+        query=query["query"],
+        filter={"section": query["section"]},
+    )
     return {"context": retrieved_docs}
 
 
@@ -82,18 +118,19 @@ def generate(state: State):
     return {"answer": response.content}
 
 
-graph_builder = StateGraph(State).add_sequence([retrieve, generate])
-graph_builder.add_edge(START, "retrieve")
+graph_builder = StateGraph(State).add_sequence([analyze_query, retrieve, generate])
+graph_builder.add_edge(START, "analyze_query")
 graph = graph_builder.compile()
 
-print("\n\n ########## Invoke Mode - updates ########## \n\n")
 
-state_1: State = graph.invoke({"question": "What is Task Decomposition"})
-print(state_1)
+# print("\n\n ########## Invoke Mode - updates ########## \n\n")
+# state_1: State = graph.invoke({"question": "What is Task Decomposition"})
+# print(state_1)
 
 
 print("\n\n ########## Stream Mode - updates ########## \n\n")
-
-state_2: State = {"question": "What is Task Decomposition"}
+state_2: State = {
+    "question": "What does the middle of the post say about Task Decomposition"
+}
 for step in graph.stream(state_2, stream_mode="updates"):
     print(f"{step}\n\n------------\n")
