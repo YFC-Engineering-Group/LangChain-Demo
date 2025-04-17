@@ -77,6 +77,7 @@ if docs_count == 0:
 else:
     print("Skip embeddings\n\n")
 
+
 prompt: PromptTemplate = hub.pull("rlm/rag-prompt")
 
 
